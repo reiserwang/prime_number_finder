@@ -17,12 +17,26 @@ def is_prime(x):
         return True
 
 
-def check_prime(x):
+def check_prime_chunk(chunk_range):
     """
-    Helper function for pool.map that returns the number if it is prime,
-    or None if it is not. This avoids sending booleans back.
+    Checks a range of numbers for primality.
+    Returns a list of primes found in the range.
     """
-    return x if is_prime(x) else None
+    start, end = chunk_range
+    primes = []
+
+    # Ensure start is odd
+    if start % 2 == 0:
+        start += 1
+
+    for x in range(start, end, 2):
+        # Optimization: skip multiples of 3 to avoid function call overhead
+        if x % 3 == 0:
+            continue
+        if is_prime(x):
+            primes.append(x)
+
+    return primes
 
 
 def find_primes(var, proc):
@@ -35,15 +49,33 @@ def find_primes(var, proc):
     if var > 3:
         cleaned.append(3)
 
-    # We check odd numbers starting from 5.
-    # We use chunksize to improve IPC performance.
-    with Pool(processes=proc) as pool:
-        # range(5, var, 2) covers all potential primes > 3
-        # chunksize=1000 reduces IPC overhead significantly
-        result = pool.map(check_prime, range(5, var, 2), chunksize=1000)
+    # Divide the range (5, var) into chunks
+    # Dynamic chunk size ensures utilization of all processes
+    # while keeping chunks large enough to reduce IPC overhead.
+    # We aim for at least 4 chunks per process if possible.
+    total_items = var - 5
+    if total_items < 0: total_items = 0
 
-    # Filter out None values
-    cleaned.extend(filter(None, result))
+    # Minimum chunk size to justify overhead
+    min_chunk = 10000
+
+    # Calculate optimal chunk size
+    # usage: total / (proc * 4) -> 4 batches per worker
+    calculated_chunk = total_items // (proc * 4)
+    chunk_size = max(min_chunk, calculated_chunk)
+
+    chunks = []
+    for i in range(5, var, chunk_size):
+        chunks.append((i, min(i + chunk_size, var)))
+
+    with Pool(processes=proc) as pool:
+        # Map chunks to worker processes
+        result_chunks = pool.map(check_prime_chunk, chunks)
+
+    # Flatten the results
+    for chunk in result_chunks:
+        cleaned.extend(chunk)
+
     return cleaned
 
 
