@@ -17,21 +17,45 @@ def is_prime(x):
         return True
 
 
+def check_prime(x):
+    """
+    Helper function for pool.map that returns the number if it is prime,
+    or None if it is not. This avoids sending booleans back.
+    """
+    return x if is_prime(x) else None
+
+
+def find_primes(var, proc):
+    """
+    Finds prime numbers up to 'var' using 'proc' parallel processes.
+    """
+    cleaned = []
+    if var > 2:
+        cleaned.append(2)
+    if var > 3:
+        cleaned.append(3)
+
+    # We check odd numbers starting from 5.
+    # We use chunksize to improve IPC performance.
+    with Pool(processes=proc) as pool:
+        # range(5, var, 2) covers all potential primes > 3
+        # chunksize=1000 reduces IPC overhead significantly
+        result = pool.map(check_prime, range(5, var, 2), chunksize=1000)
+
+    # Filter out None values
+    cleaned.extend(filter(None, result))
+    return cleaned
+
+
 if __name__ == "__main__":
-    cleaned = [2,3]
     var = int(input("Find prime numbers up to: "))
     proc = int(input("# of parallel worker processes: "))
     
     start = time.perf_counter()
-    #we use a with statement to create the Pool object, which ensures that the pool is cleaned up properly after use.
-    with Pool(processes=proc) as pool:
-        result = pool.map(is_prime, range(5, var,6))
 
-    for x in result:
-        if x:
-            cleaned.append(x)
+    primes = find_primes(var, proc)
 
     elapsed = time.perf_counter() - start
-    print(cleaned)
-    print("total prime numbers:", len(cleaned))
+    print(primes)
+    print("total prime numbers:", len(primes))
     print("run time:", elapsed)
