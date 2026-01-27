@@ -2,7 +2,7 @@ import math
 import time
 from multiprocessing import Pool
 
-#The algorithm used here is called the "Sieve of Eratosthenes," which iteratively identifies prime numbers by eliminating multiples of known primes. 
+# The algorithm used here is trial division, optimized to skip multiples of 2 and 3.
 def is_prime(x):
     if x < 2:
         return False
@@ -17,12 +17,12 @@ def is_prime(x):
         return True
 
 
-def check_prime(x):
+def get_primes_in_range(r):
     """
-    Helper function for pool.map that returns the number if it is prime,
-    or None if it is not. This avoids sending booleans back.
+    Worker function that checks a range of numbers and returns a list of primes.
+    This runs in the worker process and filters locally to minimize IPC.
     """
-    return x if is_prime(x) else None
+    return [x for x in r if is_prime(x)]
 
 
 def find_primes(var, proc):
@@ -36,14 +36,20 @@ def find_primes(var, proc):
         cleaned.append(3)
 
     # We check odd numbers starting from 5.
-    # We use chunksize to improve IPC performance.
-    with Pool(processes=proc) as pool:
-        # range(5, var, 2) covers all potential primes > 3
-        # chunksize=1000 reduces IPC overhead significantly
-        result = pool.map(check_prime, range(5, var, 2), chunksize=1000)
+    full_range = range(5, var, 2)
 
-    # Filter out None values
-    cleaned.extend(filter(None, result))
+    # Process in chunks to reduce IPC overhead.
+    # Instead of sending every number as a separate task item or returning None for non-primes,
+    # we send a range object (lightweight) and return a list of valid primes (efficient).
+    chunk_len = 10000
+    chunks = [full_range[i:i + chunk_len] for i in range(0, len(full_range), chunk_len)]
+
+    with Pool(processes=proc) as pool:
+        result_lists = pool.map(get_primes_in_range, chunks)
+
+    for res in result_lists:
+        cleaned.extend(res)
+
     return cleaned
 
 
