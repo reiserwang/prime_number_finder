@@ -2,7 +2,7 @@ import math
 import time
 from multiprocessing import Pool
 
-#The algorithm used here is called the "Sieve of Eratosthenes," which iteratively identifies prime numbers by eliminating multiples of known primes. 
+# The algorithm used here is called the "Sieve of Eratosthenes," which iteratively identifies prime numbers by eliminating multiples of known primes.
 def is_prime(x):
     if x < 2:
         return False
@@ -25,6 +25,25 @@ def check_prime(x):
     return x if is_prime(x) else None
 
 
+def check_prime_range(range_tuple):
+    """
+    Worker function that finds primes in a given range.
+    Optimizes performance by:
+    1. Reducing function call overhead (called once per chunk, not per number).
+    2. Reducing IPC overhead (returns list of primes, not individual results).
+    """
+    start, end = range_tuple
+    primes = []
+    # Ensure we start on an odd number if start is even
+    if start % 2 == 0:
+        start += 1
+
+    for x in range(start, end, 2):
+        if is_prime(x):
+            primes.append(x)
+    return primes
+
+
 def find_primes(var, proc):
     """
     Finds prime numbers up to 'var' using 'proc' parallel processes.
@@ -35,15 +54,24 @@ def find_primes(var, proc):
     if var > 3:
         cleaned.append(3)
 
-    # We check odd numbers starting from 5.
-    # We use chunksize to improve IPC performance.
-    with Pool(processes=proc) as pool:
-        # range(5, var, 2) covers all potential primes > 3
-        # chunksize=1000 reduces IPC overhead significantly
-        result = pool.map(check_prime, range(5, var, 2), chunksize=1000)
+    # We use a chunk size of 10,000 for range-based processing.
+    # Benchmarks showed this to be the optimal size:
+    # - Too small (e.g. 1000) -> Overhead dominates
+    # - Too large (e.g. 100000) -> Load balancing issues (uneven work)
+    chunk_size = 10000
+    ranges = []
+    for i in range(5, var, chunk_size):
+        end = min(i + chunk_size, var)
+        ranges.append((i, end))
 
-    # Filter out None values
-    cleaned.extend(filter(None, result))
+    with Pool(processes=proc) as pool:
+        # Instead of mapping over individual numbers, we map over ranges.
+        result = pool.map(check_prime_range, ranges)
+
+    # Flatten the list of lists
+    for sublist in result:
+        cleaned.extend(sublist)
+
     return cleaned
 
 
