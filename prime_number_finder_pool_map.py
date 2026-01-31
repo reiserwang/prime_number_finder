@@ -17,12 +17,21 @@ def is_prime(x):
         return True
 
 
-def check_prime(x):
+def check_prime_range(range_tuple):
     """
-    Helper function for pool.map that returns the number if it is prime,
-    or None if it is not. This avoids sending booleans back.
+    Helper function for pool.map that checks a range of numbers.
+    Returns a list of primes found in the range.
+    This reduces IPC overhead by returning batches of results.
     """
-    return x if is_prime(x) else None
+    start, end = range_tuple
+    primes = []
+    # Ensure we only check odd numbers
+    if start % 2 == 0:
+        start += 1
+    for x in range(start, end, 2):
+        if is_prime(x):
+            primes.append(x)
+    return primes
 
 
 def find_primes(var, proc):
@@ -36,14 +45,22 @@ def find_primes(var, proc):
         cleaned.append(3)
 
     # We check odd numbers starting from 5.
-    # We use chunksize to improve IPC performance.
-    with Pool(processes=proc) as pool:
-        # range(5, var, 2) covers all potential primes > 3
-        # chunksize=1000 reduces IPC overhead significantly
-        result = pool.map(check_prime, range(5, var, 2), chunksize=1000)
+    # We use a larger chunk size (range) to process in each worker.
+    # 10,000 is chosen as an optimal balance for IPC overhead vs load balancing.
+    chunk_size = 10000
+    ranges = []
+    for i in range(5, var, chunk_size):
+        end = min(i + chunk_size, var)
+        ranges.append((i, end))
 
-    # Filter out None values
-    cleaned.extend(filter(None, result))
+    with Pool(processes=proc) as pool:
+        # Map the ranges to the workers
+        results = pool.map(check_prime_range, ranges)
+
+    # Flatten the results
+    for batch in results:
+        cleaned.extend(batch)
+
     return cleaned
 
 
